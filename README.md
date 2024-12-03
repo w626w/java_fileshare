@@ -25,7 +25,7 @@ password: 123456
 
 ## 创建数据库
 
-运行 `src/main/resources/schema.sql` 文件以创建所需的数据库和表结构。
+以mysql运行 `src/main/resources/schema.sql` 文件以创建所需的数据库和表结构。
 
 ## 启动项目
 
