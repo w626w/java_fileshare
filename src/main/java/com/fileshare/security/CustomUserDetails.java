@@ -17,6 +17,7 @@ public class CustomUserDetails implements UserDetails {
     private final String password;
     private final boolean enabled;
     private final boolean isAdmin;
+    private final User user;
 
     public CustomUserDetails(User user) {
         this.id = user.getId();
@@ -24,14 +25,16 @@ public class CustomUserDetails implements UserDetails {
         this.password = user.getPassword();
         this.enabled = user.getIsEnabled() != null ? user.getIsEnabled() : true;
         this.isAdmin = user.getIsAdmin() != null ? user.getIsAdmin() : false;
+        this.user = user;
     }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         List<GrantedAuthority> authorities = new ArrayList<>();
-        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-        if (isAdmin) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        if (user.getRole() != null) {
+            authorities.add(new SimpleGrantedAuthority(user.getRole()));
+        } else {
+            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
         }
         return authorities;
     }
