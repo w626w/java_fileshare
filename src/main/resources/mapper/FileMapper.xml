@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.fileshare.mapper.FileMapper">
+    
+    <resultMap id="FileResultMap" type="com.fileshare.entity.File">
+        <id property="id" column="id"/>
+        <result property="fileName" column="file_name"/>
+        <result property="originalFileName" column="original_file_name"/>
+        <result property="filePath" column="file_path"/>
+        <result property="fileSize" column="file_size"/>
+        <result property="fileType" column="file_type"/>
+        <result property="isPublic" column="is_public"/>
+        <result property="uploaderId" column="uploader_id"/>
+        <result property="uploaderName" column="username"/>
+        <result property="uploadTime" column="upload_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.fileshare.entity.File" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO files (
+            file_name, 
+            original_file_name,
+            file_path,
+            file_size,
+            file_type,
+            is_public,
+            uploader_id,
+            upload_time,
+            update_time
+        ) VALUES (
+            #{fileName},
+            #{originalFileName},
+            #{filePath},
+            #{fileSize},
+            #{fileType},
+            #{isPublic},
+            #{uploaderId},
+            #{uploadTime},
+            #{updateTime}
+        )
+    </insert>
+
+    <select id="findById" resultMap="FileResultMap">
+        SELECT f.*, u.username
+        FROM files f
+        LEFT JOIN users u ON f.uploader_id = u.id
+        WHERE f.id = #{id}
+    </select>
+
+    <select id="findByUploaderId" resultMap="FileResultMap">
+        SELECT f.*, u.username
+        FROM files f
+        LEFT JOIN users u ON f.uploader_id = u.id
+        WHERE f.uploader_id = #{uploaderId}
+    </select>
+
+    <select id="findPublicFiles" resultMap="FileResultMap">
+        SELECT f.*, u.username
+        FROM files f
+        LEFT JOIN users u ON f.uploader_id = u.id
+        WHERE f.is_public = true
+    </select>
+
+    <select id="searchFiles" resultMap="FileResultMap">
+        SELECT f.*, u.username
+        FROM files f
+        LEFT JOIN users u ON f.uploader_id = u.id
+        WHERE f.original_file_name LIKE CONCAT('%', #{keyword}, '%')
+    </select>
+
+    <update id="update" parameterType="com.fileshare.entity.File">
+        UPDATE files SET
+            file_name = #{fileName},
+            original_file_name = #{originalFileName},
+            file_path = #{filePath},
+            file_size = #{fileSize},
+            file_type = #{fileType},
+            is_public = #{isPublic},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM files WHERE id = #{id}
+    </delete>
+
+    <insert id="shareFile">
+        INSERT INTO file_shares (file_id, user_id, share_time)
+        VALUES (#{fileId}, #{userId}, NOW())
+    </insert>
+</mapper> 
