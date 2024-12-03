@@ -9,11 +9,7 @@ public interface LogMapper {
     
     @Insert("INSERT INTO operation_logs (user_id, username, operation, details, ip_address, operation_time) " +
             "VALUES (#{userId}, #{username}, #{operation}, #{details}, #{ipAddress}, #{operationTime})")
-    @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(OperationLog log);
-
-    @Select("SELECT * FROM operation_logs WHERE user_id = #{userId} ORDER BY operation_time DESC")
-    List<OperationLog> findByUserId(Long userId);
 
     @Select("SELECT * FROM operation_logs ORDER BY operation_time DESC")
     List<OperationLog> findAll();

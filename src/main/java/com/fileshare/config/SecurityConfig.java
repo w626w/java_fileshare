@@ -10,9 +10,14 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import com.fileshare.security.CustomUserDetailsService;
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import javax.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpMethod;
+
 
 @Configuration
 @EnableWebSecurity
+@EnableGlobalMethodSecurity(prePostEnabled = true)
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Autowired
@@ -27,35 +32,41 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     protected void configure(HttpSecurity http) throws Exception {
         http
             .authorizeRequests()
-                .antMatchers(
-                    "/error",
-                    "/auth/**",
-                    "/css/**",
-                    "/js/**",
-                    "/images/**",
-                    "/webjars/**"
-                ).permitAll()
-                .antMatchers("/api/files/**").authenticated()
+                .antMatchers("/auth/login", "/auth/register", "/error").permitAll()
+                .antMatchers("/css/**", "/js/**", "/images/**", "/webjars/**").permitAll()
                 .antMatchers("/admin/**").hasRole("ADMIN")
+                .antMatchers(HttpMethod.POST, "/api/files/upload").access("@userPermissionEvaluator.canUpload(authentication)")
+                .antMatchers(HttpMethod.GET, "/api/files/download/**").access("@userPermissionEvaluator.canDownload(authentication)")
+                .antMatchers(HttpMethod.POST, "/api/files/*/share").access("@userPermissionEvaluator.canShare(authentication)")
                 .anyRequest().authenticated()
-            .and()
+                .and()
+            .exceptionHandling()
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    String message = "";
+                    if (request.getRequestURI().contains("/upload")) {
+                        message = "{\"error\": \"您没有上传权限\"}";
+                    } else if (request.getRequestURI().contains("/download")) {
+                        message = "{\"error\": \"您没有下载权限\"}";
+                    } else if (request.getRequestURI().contains("/share")) {
+                        message = "{\"error\": \"您没有分享权限\"}";
+                    } else {
+                        message = "{\"error\": \"权限不足\"}";
+                    }
+                    response.getWriter().write(message);
+                })
+                .and()
             .formLogin()
                 .loginPage("/auth/login")
                 .defaultSuccessUrl("/")
-                .failureUrl("/auth/login?error")
                 .permitAll()
-            .and()
+                .and()
             .logout()
                 .logoutUrl("/auth/logout")
-                .logoutSuccessUrl("/auth/login?logout")
-                .invalidateHttpSession(true)
-                .clearAuthentication(true)
-                .deleteCookies("JSESSIONID")
+                .logoutSuccessUrl("/auth/login")
                 .permitAll()
-            .and()
-            .exceptionHandling()
-                .accessDeniedPage("/error")
-            .and()
+                .and()
             .csrf().disable();
     }
 

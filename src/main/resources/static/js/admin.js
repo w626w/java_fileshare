@@ -84,20 +84,19 @@ function createUser() {
     const user = {
         username: formData.get('username'),
         password: formData.get('password'),
-        email: formData.get('email'),
-        isAdmin: formData.get('isAdmin') === 'on'
+        email: formData.get('email')
     };
     
     $.ajax({
-        url: '/api/admin/users',
+        url: '/admin/users',
         type: 'POST',
         contentType: 'application/json',
         data: JSON.stringify(user),
-        success: function() {
+        success: function(response) {
             $('#createUserModal').modal('hide');
             $('#createUserForm')[0].reset();
-            loadUsers();
             alert('用户创建成功');
+            loadUsers();  // 重新加载用户列表
         },
         error: function(xhr) {
             alert('创建失败: ' + xhr.responseText);

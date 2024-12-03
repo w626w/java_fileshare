@@ -19,6 +19,8 @@ public class HomeController {
             log.debug("用户已登录: {}", userDetails.getUsername());
             model.addAttribute("currentUserId", userDetails.getId());
             model.addAttribute("username", userDetails.getUsername());
+            model.addAttribute("isAdmin", userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
             return "index";
         } else {
             log.debug("用户未登录，重定向到登录页面");

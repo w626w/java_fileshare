@@ -3,7 +3,8 @@ package com.fileshare.service.impl;
 import com.fileshare.entity.OperationLog;
 import com.fileshare.mapper.LogMapper;
 import com.fileshare.service.LogService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.FileWriter;
@@ -13,27 +14,34 @@ import java.util.List;
 @Service
 public class LogServiceImpl implements LogService {
 
-    @Autowired
-    private LogMapper logMapper;
+    private final LogMapper logMapper;
+    private static final Logger log = LoggerFactory.getLogger(LogServiceImpl.class);
 
-    @Override
-    public void saveLog(OperationLog log) {
-        logMapper.insert(log);
+    public LogServiceImpl(LogMapper logMapper) {
+        this.logMapper = logMapper;
     }
 
     @Override
-    public List<OperationLog> getLogs(Long userId) {
-        return logMapper.findByUserId(userId);
+    public void saveLog(OperationLog operationLog) {
+        log.debug("Saving operation log: {}", operationLog);
+        logMapper.insert(operationLog);
     }
 
     @Override
     public List<OperationLog> getAllLogs() {
+        log.debug("Getting all logs");
         return logMapper.findAll();
     }
 
     @Override
     public List<OperationLog> searchLogs(String keyword) {
+        log.debug("Searching logs with keyword: {}", keyword);
         return logMapper.searchLogs(keyword);
+    }
+
+    @Override
+    public List<OperationLog> getLogs(Long userId) {
+        return logMapper.findAll();
     }
 
     @Override

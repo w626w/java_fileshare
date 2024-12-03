@@ -130,18 +130,14 @@ function updateNotificationCount() {
 }
 
 function uploadFile() {
-    console.log('开始上传文件');
     const formData = new FormData();
     const fileInput = $('#file')[0];
     const isPublic = $('#isPublic').is(':checked');
 
     if (fileInput.files.length === 0) {
-        alert('请选择要上传的文件');
+        toastr.warning('请选择要上传的文件');
         return;
     }
-
-    console.log('文件:', fileInput.files[0]);
-    console.log('是否公开:', isPublic);
 
     formData.append('file', fileInput.files[0]);
     formData.append('isPublic', isPublic);
@@ -152,27 +148,79 @@ function uploadFile() {
         data: formData,
         processData: false,
         contentType: false,
-        beforeSend: function() {
-            console.log('发送请求...');
-        },
+        dataType: 'json',
         success: function(response) {
-            console.log('上传成功:', response);
+            if (response.error) {
+                toastr.error(response.error);
+            } else {
+                toastr.success(response.message || '文件上传成功');
+            }
             $('#uploadModal').modal('hide');
             $('#uploadForm')[0].reset();
-            alert('文件上传成功');
             loadFiles('my');
         },
-        error: function(xhr, status, error) {
-            console.error('上传失败:', error);
-            console.error('状态:', status);
-            console.error('响应:', xhr.responseText);
-            alert('文件上传失败: ' + (xhr.responseText || error));
+        error: function(xhr) {
+            if (xhr.status === 403) {
+                toastr.error('您没有上传权限');
+            } else {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    toastr.error(response.error || '上传失败');
+                } catch (e) {
+                    toastr.error('上传失败: ' + (xhr.responseText || '未知错误'));
+                }
+            }
+            $('#uploadModal').modal('hide');
         }
     });
 }
 
 function downloadFile(fileId) {
-    window.location.href = `/api/files/download/${fileId}`;
+    $.ajax({
+        url: `/api/files/download/${fileId}`,
+        method: 'GET',
+        xhrFields: {
+            responseType: 'blob'
+        },
+        success: function(response, status, xhr) {
+            const contentType = xhr.getResponseHeader('content-type');
+            if(contentType && contentType.indexOf('application/json') !== -1) {
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const error = JSON.parse(this.result);
+                    toastr.error(error.error);
+                };
+                reader.readAsText(response);
+                return;
+            }
+            
+            // 处理文件下载
+            const disposition = xhr.getResponseHeader('Content-Disposition');
+            let filename = 'download';
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+                }
+            }
+            
+            const url = window.URL.createObjectURL(response);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        },
+        error: function(xhr) {
+            if (xhr.status === 403) {
+                toastr.error('您没有下载权限');
+            } else {
+                toastr.error('下载失败: ' + (xhr.responseText || '未知错误'));
+            }
+        }
+    });
 }
 
 function deleteFile(fileId) {
@@ -242,7 +290,7 @@ function previewFile(fileId) {
             previewContent.empty();
             
             if (contentType.startsWith('image/')) {
-                previewContent.html(`<img src="/api/files/preview/${fileId}" alt="预览图片">`);
+                previewContent.html(`<img src="/api/files/preview/${fileId}" alt="预览图">`);
             } else if (contentType === 'application/pdf') {
                 previewContent.html(`
                     <iframe src="/api/files/preview/${fileId}" style="width:100%;height:70vh;border:none;">
@@ -338,26 +386,40 @@ function editFile(fileId) {
     });
 }
 
-function shareFile(fileId) {
-    $.get('/api/users', function(users) {
-        const userList = $('#shareUserList');
-        userList.empty();
-        
-        users.forEach(user => {
-            if (user.id !== currentUserId) {
-                userList.append(`
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="${user.id}" name="shareUsers">
-                        <label class="form-check-label">
-                            ${user.username}
-                        </label>
-                    </div>
-                `);
+function shareFile() {
+    const fileId = $('#shareFileId').val();
+    const userIds = [];
+    
+    $('input[name="userIds"]:checked').each(function() {
+        userIds.push($(this).val());
+    });
+    
+    if (userIds.length === 0) {
+        toastr.warning('请选择至少一个用户');
+        return;
+    }
+    
+    $.ajax({
+        url: `/api/files/${fileId}/share`,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(userIds),
+        success: function(response) {
+            if (response.error) {
+                toastr.error(response.error);
+            } else {
+                $('#shareModal').modal('hide');
+                toastr.success(response.message || '文件分享成功');
             }
-        });
-        
-        $('#shareFileId').val(fileId);
-        $('#shareFileModal').modal('show');
+        },
+        error: function(xhr) {
+            if (xhr.status === 403) {
+                toastr.error('您没有分享权限');
+                $('#shareModal').modal('hide');
+            } else {
+                toastr.error('分享失败: ' + (xhr.responseText || '未知错误'));
+            }
+        }
     });
 }
 
@@ -368,19 +430,21 @@ function showShareModal(fileId) {
     $.get('/api/users/list', function(users) {
         let html = '';
         users.forEach(user => {
-            html += `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${user.id}" id="user${user.id}">
-                    <label class="form-check-label" for="user${user.id}">
-                        ${user.username}
-                    </label>
-                </div>
-            `;
+            if (user.id !== currentUserId) {  // 不显示当前用户
+                html += `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" 
+                            name="userIds" value="${user.id}" id="user${user.id}">
+                        <label class="form-check-label" for="user${user.id}">
+                            ${user.username}
+                        </label>
+                    </div>
+                `;
+            }
         });
         $('#userList').html(html);
+        $('#shareModal').modal('show');
     });
-    
-    $('#shareModal').modal('show');
 }
 
 function loadUsers() {
@@ -403,34 +467,53 @@ function loadUsers() {
     });
 }
 
-function shareFile() {
-    const fileId = $('#shareFileId').val();
-    const userIds = [];
-    $('input[name="userIds"]:checked').each(function() {
-        userIds.push($(this).val());
-    });
-    
-    if (userIds.length === 0) {
-        alert('请选择至少一个用户');
-        return;
-    }
+function updatePermission(userId, permission) {
+    const checkbox = event.target;
+    const originalState = checkbox.checked;
     
     $.ajax({
-        url: `/api/files/${fileId}/share`,
-        type: 'POST',
+        url: `/admin/users/${userId}/permissions`,
+        type: 'PUT',
         contentType: 'application/json',
-        data: JSON.stringify(userIds),
-        success: function() {
-            $('#shareModal').modal('hide');
-            alert('文件分享成功');
+        data: JSON.stringify({
+            id: userId,
+            canUpload: permission === 'canUpload' ? checkbox.checked : undefined,
+            canDownload: permission === 'canDownload' ? checkbox.checked : undefined,
+            canShare: permission === 'canShare' ? checkbox.checked : undefined
+        }),
+        success: function(response) {
+            if (response && typeof response === 'object' && !response.success) {
+                toastr.error(response.error || '更新失败');
+                checkbox.checked = originalState;
+            } else {
+                toastr.success(response.message || '权限更新成功');
+            }
         },
-        error: function() {
-            alert('文件分享失败');
+        error: function(xhr) {
+            let errorMsg = '权限更新失败';
+            try {
+                const response = JSON.parse(xhr.responseText);
+                if (response && response.error) {
+                    errorMsg = response.error;
+                }
+            } catch (e) {
+                console.error('Error parsing response:', e);
+            }
+            toastr.error(errorMsg);
+            checkbox.checked = originalState;
         }
     });
 }
 
 $(document).ready(function() {
+    // 初始化 toastr
+    toastr.options = {
+        "closeButton": true,
+        "positionClass": "toast-top-right",
+        "timeOut": "3000",
+        "progressBar": true
+    };
+    
     if (typeof currentUserId === 'undefined') {
         console.error('currentUserId not set');
         return;
@@ -438,7 +521,7 @@ $(document).ready(function() {
     
     console.log('Current user ID:', currentUserId);
     
-    // 初始加载公共文件
+    // 初始载公共文件
     loadFiles('public');
     
     // 尝试建立WebSocket连接
@@ -464,12 +547,6 @@ $(document).ready(function() {
     $('#uploadBtn').click(uploadFile);
     $('#searchBtn').click(searchFiles);
     $('#shareBtn').click(shareFile);
-    
-    toastr.options = {
-        "closeButton": true,
-        "positionClass": "toast-top-right",
-        "timeOut": "3000"
-    };
     
     $('#searchInput').on('keypress', function(e) {
         if (e.which === 13) {

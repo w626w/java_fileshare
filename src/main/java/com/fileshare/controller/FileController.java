@@ -1,12 +1,13 @@
 package com.fileshare.controller;
 
 import com.fileshare.entity.File;
+import com.fileshare.entity.User;
 import com.fileshare.security.CustomUserDetails;
 import com.fileshare.service.FileService;
+import com.fileshare.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -15,11 +16,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/api/files")
@@ -28,9 +29,11 @@ public class FileController {
     private static final Logger log = LoggerFactory.getLogger(FileController.class);
 
     private final FileService fileService;
+    private final UserService userService;
 
-    public FileController(FileService fileService) {
+    public FileController(FileService fileService, UserService userService) {
         this.fileService = fileService;
+        this.userService = userService;
     }
 
     @GetMapping("/public")
@@ -55,30 +58,48 @@ public class FileController {
 
     @PostMapping("/upload")
     @ResponseBody
-    public File uploadFile(
+    public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "isPublic", defaultValue = "false") boolean isPublic,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @RequestParam(value = "isPublic", defaultValue = "true") Boolean isPublic,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         try {
-            if (file.isEmpty()) {
-                throw new IllegalArgumentException("请选择要上传的文件");
+            log.debug("Received upload request from user: {}", userDetails.getUsername());
+            // 检查用户是否有上传权限
+            User user = userService.findByUsername(userDetails.getUsername());
+            if (!user.getCanUpload()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("error", "您没有上传权限"));
             }
-            log.debug("开始上传文件: {}, isPublic: {}, uploaderId: {}", 
-                file.getOriginalFilename(), isPublic, userDetails.getId());
-            return fileService.uploadFile(file, userDetails.getId(), isPublic);
+            
+            File uploadedFile = fileService.uploadFile(file, userDetails.getId(), isPublic);
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of(
+                    "success", true, 
+                    "message", "文件上传成功",
+                    "file", uploadedFile
+                ));
         } catch (Exception e) {
-            log.error("文件上传失败", e);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("error", "上传失败: " + e.getMessage()));
         }
     }
 
     @GetMapping("/download/{id}")
-    public ResponseEntity<Resource> downloadFile(
+    public ResponseEntity<?> downloadFile(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         try {
+            // 检查用户是否有下载权限
+            User user = userService.findByUsername(userDetails.getUsername());
+            if (!user.getCanDownload()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("error", "您没有下载权限"));
+            }
+
             byte[] fileData = fileService.downloadFile(id, userDetails.getId());
             File fileInfo = fileService.getFileInfo(id);
             
@@ -89,7 +110,9 @@ public class FileController {
                 .contentLength(fileData.length)
                 .body(new ByteArrayResource(fileData));
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "文件下载失败: " + e.getMessage());
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("error", "下载失败: " + e.getMessage()));
         }
     }
 
@@ -113,11 +136,27 @@ public class FileController {
 
     @PostMapping("/{id}/share")
     @ResponseBody
-    public void shareFile(
+    public ResponseEntity<?> shareFile(
             @PathVariable Long id,
             @RequestBody List<Long> userIds,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        fileService.shareFile(id, userIds, userDetails.getId());
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        try {
+            // 检查用户是否有分享权限
+            User user = userService.findByUsername(userDetails.getUsername());
+            if (!user.getCanShare()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("error", "您没有分享权限"));
+            }
+
+            fileService.shareFile(id, userIds, userDetails.getId());
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("message", "文件分享成功"));
+        } catch (Exception e) {
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("error", "分享失败: " + e.getMessage()));
+        }
     }
 } 
